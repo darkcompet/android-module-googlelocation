@@ -25,7 +25,7 @@ import tool.compet.core.DkUtils
  * Ref: https://github.com/android/location-samples
  */
 @SuppressLint("MissingPermission")
-class DkGoogleLocationTracker(host: Activity?, listener: Listener) : LocationCallback(), LocationListener {
+class DkGoogleLocationTracker(host: Activity, listener: Listener) : LocationCallback(), LocationListener {
 	interface Listener {
 		fun onLastLocationUpdated(location: Location)
 		fun onLocationResult(locations: List<Location>)
@@ -41,14 +41,14 @@ class DkGoogleLocationTracker(host: Activity?, listener: Listener) : LocationCal
 	private val listeners = ArrayList<Listener>()
 
 	init {
-		val locationRequest = LocationRequest.create()
-		locationRequest.interval = 30000 // default 30 s
-		locationRequest.fastestInterval = 10000 // default 10 s
-		locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+		this.locationRequest = LocationRequest.create().apply {
+			this.interval = 30_000 // default 30 s
+			this.fastestInterval = 10_000 // default 10 s
+			this.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+		}
 
 		listeners.add(listener)
 
-		this.locationRequest = locationRequest
 		locationProviderClient = LocationServices.getFusedLocationProviderClient(host!!)
 
 		requestLastLocation(host)
@@ -81,7 +81,7 @@ class DkGoogleLocationTracker(host: Activity?, listener: Listener) : LocationCal
 	/**
 	 * Start location updates.
 	 */
-	fun start(host: Activity?) {
+	fun start(host: Activity) {
 		if (!DkUtils.checkPermission(host, DkConst.ACCESS_FINE_LOCATION, DkConst.ACCESS_COARSE_LOCATION)) {
 			DkLogcats.warning(this, "Skip request location updates since NO permission granted !")
 			return
@@ -99,12 +99,12 @@ class DkGoogleLocationTracker(host: Activity?, listener: Listener) : LocationCal
 	/**
 	 * Request last known location of user.
 	 */
-	fun requestLastLocation(host: Activity?) {
+	fun requestLastLocation(host: Activity) {
 		if (!DkUtils.checkPermission(host, DkConst.ACCESS_FINE_LOCATION, DkConst.ACCESS_COARSE_LOCATION)) {
 			DkLogcats.warning(this, "Skip request last location since NO permission granted !")
 			return
 		}
-		locationProviderClient.lastLocation.addOnCompleteListener(host!!) { task: Task<Location?> ->
+		locationProviderClient.lastLocation.addOnCompleteListener(host) { task: Task<Location?> ->
 			if (task.isSuccessful && task.result != null) {
 				for (listener in listeners) {
 					listener.onLastLocationUpdated(task.result!!)
