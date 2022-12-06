@@ -8,6 +8,7 @@ import android.app.Activity
 import android.location.Location
 import android.os.Looper
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationAvailability
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationListener
 import com.google.android.gms.location.LocationRequest
@@ -25,45 +26,47 @@ import tool.compet.core.DkUtils
  * Ref: https://github.com/android/location-samples
  */
 @SuppressLint("MissingPermission")
-class DkGoogleLocationTracker(host: Activity, listener: Listener) : LocationCallback(), LocationListener {
+class DkGoogleLocationTracker(host: Activity, listener: Listener) {
 	interface Listener {
-		fun onLastLocationUpdated(location: Location)
+		fun onLocationAvailability(result: LocationAvailability)
 		fun onLocationResult(locations: List<Location>)
+
+		fun onLastLocationUpdated(location: Location)
 		fun onLocationChanged(location: Location)
 	}
 
-	private val locationProviderClient: FusedLocationProviderClient
+	private val locationCallback = object : LocationCallback() {
+		override fun onLocationAvailability(result: LocationAvailability) {
+			for (caller in listeners) {
+				caller.onLocationAvailability(result)
+			}
+		}
 
-	/**
-	 * Obtain location request instance for more setting, for eg,. interval, fastestInterval, priority,...
-	 */
-	val locationRequest: LocationRequest
-	private val listeners = ArrayList<Listener>()
+		override fun onLocationResult(result: LocationResult) {
+			for (caller in listeners) {
+				caller.onLocationResult(result.locations)
+			}
+		}
+	}
+
+	private val locationListener = LocationListener { location ->
+		for (caller in listeners) {
+			caller.onLocationChanged(location)
+		}
+	}
+
+	private val locationProviderClient: FusedLocationProviderClient
+	private val listeners = mutableListOf<Listener>()
+	private val locationRequest = LocationRequest.create().apply {
+		//this.interval = 30_000 // default 30 s
+		//this.fastestInterval = 10_000 // default 10 s
+		//this.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+	}
 
 	init {
-		this.locationRequest = LocationRequest.create().apply {
-			this.interval = 30_000 // default 30 s
-			this.fastestInterval = 10_000 // default 10 s
-			this.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
-		}
-
 		listeners.add(listener)
-
-		locationProviderClient = LocationServices.getFusedLocationProviderClient(host!!)
-
+		locationProviderClient = LocationServices.getFusedLocationProviderClient(host)
 		requestLastLocation(host)
-	}
-
-	override fun onLocationResult(result: LocationResult) {
-		for (listener in listeners) {
-			listener.onLocationResult(result.locations)
-		}
-	}
-
-	override fun onLocationChanged(location: Location) {
-		for (listener in listeners) {
-			listener.onLocationChanged(location)
-		}
 	}
 
 	fun register(listener: Listener): DkGoogleLocationTracker {
@@ -86,14 +89,16 @@ class DkGoogleLocationTracker(host: Activity, listener: Listener) : LocationCall
 			DkLogcats.warning(this, "Skip request location updates since NO permission granted !")
 			return
 		}
-		locationProviderClient.requestLocationUpdates(locationRequest, this, Looper.getMainLooper())
+		locationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+		locationProviderClient.requestLocationUpdates(locationRequest, locationListener, Looper.getMainLooper())
 	}
 
 	/**
 	 * Stop location updates.
 	 */
 	fun stop() {
-		locationProviderClient.removeLocationUpdates(this)
+		locationProviderClient.removeLocationUpdates(locationCallback)
+		locationProviderClient.removeLocationUpdates(locationListener)
 	}
 
 	/**
@@ -105,9 +110,11 @@ class DkGoogleLocationTracker(host: Activity, listener: Listener) : LocationCall
 			return
 		}
 		locationProviderClient.lastLocation.addOnCompleteListener(host) { task: Task<Location?> ->
-			if (task.isSuccessful && task.result != null) {
-				for (listener in listeners) {
-					listener.onLastLocationUpdated(task.result!!)
+			if (task.isSuccessful) {
+				task.result?.let { location ->
+					for (caller in listeners) {
+						caller.onLastLocationUpdated(location)
+					}
 				}
 			}
 			else {
